@@ -1,3 +1,4 @@
+
 import google.generativeai as genai
 import speech_recognition as sr
 import pyttsx3
@@ -10,6 +11,7 @@ from datetime import date, datetime
 import pygame
 import sys
 import platform
+import re
 
 # ✅ Gemini API Setup
 genai.configure(api_key="AIzaSyDIqMo_kDdPef6fIlFzqOKAHmRIgWAdcZc")
@@ -35,13 +37,14 @@ def chatfun(talk):
     try:
         chat_history = [{'role': msg['role'], 'parts': [msg['content']]} for msg in talk]
         response = model.generate_content(chat_history)
-        if hasattr(response, 'text') and response.text:
-            talk.append({'role': 'model', 'content': response.text})
-            return talk
-        else:
-            print("[ERROR] Gemini returned no text.")
-            talk.append({'role': 'model', 'content': "I'm sorry, I didn't get that."})
-            return talk
+        text_response = response.text if hasattr(response, 'text') and response.text else None
+        print("[Gemini RAW Response]:", text_response)
+
+        if not text_response or len(text_response.strip()) < 5:
+            text_response = "I'm sorry, I didn't get that."
+
+        talk.append({'role': 'model', 'content': text_response})
+        return talk
     except Exception as e:
         print(f"[Gemini Error]: {e}")
         talk.append({'role': 'model', 'content': "Something went wrong with my brain!"})
@@ -50,6 +53,8 @@ def chatfun(talk):
 # ✅ TTS Speak
 def speak_text(text):
     try:
+        text = re.sub(r'[^\w\s.,?!]', '', text)
+        text = re.sub(r'\s+', ' ', text).strip()
         print("AI:", text)
         engine.say(text)
         engine.runAndWait()
