@@ -9,17 +9,18 @@ import urllib.parse
 from datetime import date, datetime
 import pygame
 import sys
+import platform
 
 # ✅ Gemini API Setup
 genai.configure(api_key="AIzaSyDIqMo_kDdPef6fIlFzqOKAHmRIgWAdcZc")
 model = genai.GenerativeModel("models/gemini-1.5-flash")
 
 # ✅ OpenWeatherMap Setup
-WEATHER_API_KEY = "d60071ca6916b9d6c78fe204c02811b9"  # Replace with your actual API key
+WEATHER_API_KEY = "d60071ca6916b9d6c78fe204c02811b9"
 CITY = "Pune"
 
 # ✅ TTS Setup
-engine = pyttsx3.init()
+engine = pyttsx3.init(driverName='espeak')
 engine.setProperty('rate', 190)
 voices = engine.getProperty('voices')
 if len(voices) > 1:
@@ -27,7 +28,6 @@ if len(voices) > 1:
 
 # ✅ Pygame Setup
 pygame.mixer.init()
-
 today = str(date.today())
 
 # ✅ Gemini Chat
@@ -35,7 +35,7 @@ def chatfun(talk):
     try:
         chat_history = [{'role': msg['role'], 'parts': [msg['content']]} for msg in talk]
         response = model.generate_content(chat_history)
-        if response.text:
+        if hasattr(response, 'text') and response.text:
             talk.append({'role': 'model', 'content': response.text})
             return talk
         else:
@@ -69,43 +69,45 @@ def get_weather():
         response = requests.get(url).json()
         temp = response["main"]["temp"]
         desc = response["weather"][0]["description"]
-        weather_info = f"It's currently {temp}°C with {desc} in {CITY}."
-        return weather_info
+        return f"It's currently {temp}°C with {desc} in {CITY}."
     except Exception as e:
         return "I couldn't get the weather right now."
 
-# ✅ App / URL Opener (with YouTube song support)
+# ✅ App / URL Opener
 def open_app_or_website(command):
     command = command.lower()
-
-    if "play" in command and "youtube" in command:
-        try:
+    try:
+        if "play" in command and "youtube" in command:
             song = command.split("play", 1)[1].split("on youtube")[0].strip()
             if song:
                 query = urllib.parse.quote(song)
                 url = f"https://www.youtube.com/results?search_query={query}"
                 webbrowser.open(url)
                 return f"Playing {song} on YouTube"
-        except Exception as e:
-            return "Sorry, I couldn't understand the song name."
 
-    elif "youtube" in command:
-        webbrowser.open("https://www.youtube.com")
-        return "Opening YouTube"
-    elif "google" in command:
-        webbrowser.open("https://www.google.com")
-        return "Opening Google"
-    elif "notepad" in command:
-        os.system("notepad")
-        return "Opening Notepad"
-    elif "calculator" in command:
-        os.system("calc")
-        return "Opening Calculator"
-    elif "command prompt" in command or "cmd" in command:
-        os.system("start cmd")
-        return "Opening Command Prompt"
-    else:
+        elif "youtube" in command:
+            webbrowser.open("https://www.youtube.com")
+            return "Opening YouTube"
+        elif "google" in command:
+            webbrowser.open("https://www.google.com")
+            return "Opening Google"
+
+        elif "notepad" in command:
+            if platform.system() == "Windows":
+                os.system("notepad")
+                return "Opening Notepad"
+        elif "calculator" in command:
+            if platform.system() == "Windows":
+                os.system("calc")
+                return "Opening Calculator"
+        elif "command prompt" in command or "cmd" in command:
+            if platform.system() == "Windows":
+                os.system("start cmd")
+                return "Opening Command Prompt"
         return None
+    except Exception as e:
+        print(f"[App Error]: {e}")
+        return "Could not open the requested app."
 
 # ✅ Main Voice Assistant Loop
 def main():
@@ -151,25 +153,21 @@ def main():
 
                     append2log(f"You: {request}\n")
 
-                    # Time Request
                     if "time" in request:
                         now = datetime.now().strftime("%I:%M %p")
                         speak_text(f"The time is {now}")
                         continue
 
-                    # Weather Request
                     if "weather" in request:
                         weather = get_weather()
                         speak_text(weather)
                         continue
 
-                    # Open App or Website
                     response = open_app_or_website(request)
                     if response:
                         speak_text(response)
                         continue
 
-                    # Default: Gemini Chat
                     talk.append({'role': 'user', 'content': request})
                     talk = chatfun(talk)
                     response = talk[-1]['content'].strip()
