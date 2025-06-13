@@ -5,7 +5,6 @@ import webbrowser
 import requests
 import urllib.parse
 from datetime import date, datetime
-import pygame
 import sys
 import platform
 import re
@@ -20,8 +19,6 @@ model = genai.GenerativeModel("models/gemini-1.5-flash")
 WEATHER_API_KEY = "d60071ca6916b9d6c78fe204c02811b9"
 CITY = "Pune"
 
-# ✅ Pygame Init
-pygame.mixer.init()
 today = str(date.today())
 
 # ✅ Gemini Chat
@@ -30,7 +27,7 @@ def chatfun(talk):
         chat_history = [{'role': msg['role'], 'parts': [msg['content']]} for msg in talk]
         response = model.generate_content(chat_history)
         text_response = response.text if hasattr(response, 'text') and response.text else None
-        print("[Gemini RAW Response]:", text_response)
+        print("[Gemini]:", text_response)
 
         if not text_response or len(text_response.strip()) < 5:
             text_response = "I'm sorry, I didn't get that."
@@ -42,7 +39,7 @@ def chatfun(talk):
         talk.append({'role': 'model', 'content': "Something went wrong with my brain!"})
         return talk
 
-# ✅ TTS Speak with gTTS
+# ✅ TTS with gTTS
 def speak_text(text):
     try:
         text = re.sub(r'[^\w\s.,?!]', '', text)
@@ -54,13 +51,13 @@ def speak_text(text):
     except Exception as e:
         print(f"[TTS Error]: {e}")
 
-# ✅ Save Log
+# ✅ Save chat log
 def append2log(text):
-    fname = 'chatlog-' + today + '.txt'
+    fname = f"chatlog-{today}.txt"
     with open(fname, "a") as f:
         f.write(text + "\n")
 
-# ✅ Weather Info
+# ✅ Get Weather Info
 def get_weather():
     try:
         url = f"https://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={WEATHER_API_KEY}&units=metric"
@@ -71,7 +68,7 @@ def get_weather():
     except Exception as e:
         return "I couldn't get the weather right now."
 
-# ✅ Open Apps / Websites
+# ✅ Open Apps/Websites
 def open_app_or_website(command):
     command = command.lower()
     try:
@@ -104,9 +101,8 @@ def open_app_or_website(command):
         print(f"[App Error]: {e}")
         return "Could not open the requested app."
 
-# ✅ Main Loop
+# ✅ Main Assistant Loop
 def main():
-    global today
     rec = sr.Recognizer()
     mic = sr.Microphone()
     rec.dynamic_energy_threshold = False
@@ -116,73 +112,68 @@ def main():
     sleeping = True
 
     while True:
-        with mic as source:
-            rec.adjust_for_ambient_noise(source, duration=0.5)
-            print("Listening...")
+        try:
+            mode = input("\n🎤 Press Enter to type or say 'Alexa' to use voice: ").strip()
 
-            try:
-                audio = rec.listen(source, timeout=10, phrase_time_limit=15)
-                text = rec.recognize_google(audio)
-                print(f"Heard: {text}")
+            if mode == "":
+                # 💻 Keyboard input
+                request = input("Type your command: ").strip().lower()
 
-                if sleeping:
+            else:
+                # 🎤 Voice input
+                with mic as source:
+                    print("Listening...")
+                    rec.adjust_for_ambient_noise(source, duration=0.5)
+                    audio = rec.listen(source, timeout=10, phrase_time_limit=15)
+                    text = rec.recognize_google(audio)
+                    print(f"Heard: {text}")
+
                     if "alexa" in text.lower():
-                        sleeping = False
-                        today = str(date.today())
-                        talk = []
-                        speak_text("Hi there, how can I help?")
-                        continue
+                        request = text.lower().split("alexa", 1)[1].strip()
                     else:
                         continue
-                else:
-                    request = text.lower()
 
-                    if "that's all" in request or "stop" in request:
-                        append2log(f"You: {request}\n")
-                        speak_text("Bye now")
-                        sleeping = True
-                        continue
+            if "stop" in request or "that's all" in request:
+                speak_text("Bye now")
+                break
 
-                    if "alexa" in request:
-                        request = request.split("alexa", 1)[1].strip()
+            append2log(f"You: {request}")
 
-                    append2log(f"You: {request}\n")
+            if "time" in request:
+                now = datetime.now().strftime("%I:%M %p")
+                speak_text(f"The time is {now}")
+                continue
 
-                    if "time" in request:
-                        now = datetime.now().strftime("%I:%M %p")
-                        speak_text(f"The time is {now}")
-                        continue
+            if "weather" in request:
+                weather = get_weather()
+                speak_text(weather)
+                continue
 
-                    if "weather" in request:
-                        weather = get_weather()
-                        speak_text(weather)
-                        continue
+            response = open_app_or_website(request)
+            if response:
+                speak_text(response)
+                continue
 
-                    response = open_app_or_website(request)
-                    if response:
-                        speak_text(response)
-                        continue
+            # Default: Gemini response
+            talk.append({'role': 'user', 'content': request})
+            talk = chatfun(talk)
+            response = talk[-1]['content'].strip()
+            append2log(f"AI: {response}")
 
-                    talk.append({'role': 'user', 'content': request})
-                    talk = chatfun(talk)
-                    response = talk[-1]['content'].strip()
-                    append2log(f"AI: {response}\n")
+            # ✂️ Truncate long responses
+            words = response.split()
+            short_response = " ".join(words[:25])
+            if len(words) > 25:
+                short_response += "... Let me know if you want more."
 
-                    # ✅ Speak only first 25 words of response
-                    max_words = 25
-                    words = response.split()
-                    short_response = " ".join(words[:max_words])
-                    if len(words) > max_words:
-                        short_response += "... Let me know if you want to hear more."
+            speak_text(short_response)
 
-                    speak_text(short_response)
-
-            except sr.UnknownValueError:
-                print("Didn't catch that.")
-            except sr.RequestError as e:
-                print(f"Google Speech Error: {e}")
-            except Exception as e:
-                print(f"[ERROR]: {e}")
+        except sr.UnknownValueError:
+            print("Didn't catch that.")
+        except sr.RequestError as e:
+            print(f"Speech Error: {e}")
+        except Exception as e:
+            print(f"[ERROR]: {e}")
 
 if __name__ == "__main__":
     try:
