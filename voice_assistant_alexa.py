@@ -1,9 +1,6 @@
-
 import google.generativeai as genai
 import speech_recognition as sr
-import pyttsx3
 import os
-import pyaudio
 import webbrowser
 import requests
 import urllib.parse
@@ -12,6 +9,8 @@ import pygame
 import sys
 import platform
 import re
+from gtts import gTTS
+import playsound
 
 # ✅ Gemini API Setup
 genai.configure(api_key="AIzaSyDIqMo_kDdPef6fIlFzqOKAHmRIgWAdcZc")
@@ -21,14 +20,7 @@ model = genai.GenerativeModel("models/gemini-1.5-flash")
 WEATHER_API_KEY = "d60071ca6916b9d6c78fe204c02811b9"
 CITY = "Pune"
 
-# ✅ TTS Setup
-engine = pyttsx3.init(driverName='espeak')
-engine.setProperty('rate', 190)
-voices = engine.getProperty('voices')
-if len(voices) > 1:
-    engine.setProperty('voice', voices[1].id)
-
-# ✅ Pygame Setup
+# ✅ Pygame Init
 pygame.mixer.init()
 today = str(date.today())
 
@@ -50,14 +42,15 @@ def chatfun(talk):
         talk.append({'role': 'model', 'content': "Something went wrong with my brain!"})
         return talk
 
-# ✅ TTS Speak
+# ✅ TTS Speak with gTTS
 def speak_text(text):
     try:
         text = re.sub(r'[^\w\s.,?!]', '', text)
         text = re.sub(r'\s+', ' ', text).strip()
         print("AI:", text)
-        engine.say(text)
-        engine.runAndWait()
+        tts = gTTS(text=text, lang='en')
+        tts.save("response.mp3")
+        playsound.playsound("response.mp3")
     except Exception as e:
         print(f"[TTS Error]: {e}")
 
@@ -67,7 +60,7 @@ def append2log(text):
     with open(fname, "a") as f:
         f.write(text + "\n")
 
-# ✅ Weather Function
+# ✅ Weather Info
 def get_weather():
     try:
         url = f"https://api.openweathermap.org/data/2.5/weather?q={CITY}&appid={WEATHER_API_KEY}&units=metric"
@@ -78,7 +71,7 @@ def get_weather():
     except Exception as e:
         return "I couldn't get the weather right now."
 
-# ✅ App / URL Opener
+# ✅ Open Apps / Websites
 def open_app_or_website(command):
     command = command.lower()
     try:
@@ -96,15 +89,12 @@ def open_app_or_website(command):
         elif "google" in command:
             webbrowser.open("https://www.google.com")
             return "Opening Google"
-
-        elif "notepad" in command:
-            if platform.system() == "Windows":
-                os.system("notepad")
-                return "Opening Notepad"
-        elif "calculator" in command:
-            if platform.system() == "Windows":
-                os.system("calc")
-                return "Opening Calculator"
+        elif "notepad" in command and platform.system() == "Windows":
+            os.system("notepad")
+            return "Opening Notepad"
+        elif "calculator" in command and platform.system() == "Windows":
+            os.system("calc")
+            return "Opening Calculator"
         elif "command prompt" in command or "cmd" in command:
             if platform.system() == "Windows":
                 os.system("start cmd")
@@ -114,7 +104,7 @@ def open_app_or_website(command):
         print(f"[App Error]: {e}")
         return "Could not open the requested app."
 
-# ✅ Main Voice Assistant Loop
+# ✅ Main Loop
 def main():
     global today
     rec = sr.Recognizer()
@@ -177,7 +167,15 @@ def main():
                     talk = chatfun(talk)
                     response = talk[-1]['content'].strip()
                     append2log(f"AI: {response}\n")
-                    speak_text(response)
+
+                    # ✅ Speak only first 25 words of response
+                    max_words = 25
+                    words = response.split()
+                    short_response = " ".join(words[:max_words])
+                    if len(words) > max_words:
+                        short_response += "... Let me know if you want to hear more."
+
+                    speak_text(short_response)
 
             except sr.UnknownValueError:
                 print("Didn't catch that.")
